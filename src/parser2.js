@@ -103,4 +103,4 @@ function toParseTree(regex) {
     return expr();
 }
 
-module.exports = { toParseTree };
+export { toParseTree };

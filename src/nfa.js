@@ -216,11 +216,12 @@ function toNFAfromParseTree(root) {
             var gr = groupNum++,
                 id_start = state_id.value
             var result = toNFAfromParseTree(root.children[1]);
+            // store groups associated to states
             for(var id = id_start; id < state_id.value; id++){
                if(groupFromState[id] === undefined){
-                   groupFromState[id] = [gr]
+                   groupFromState[id] = [gr];
                }else{
-                   groupFromState[id].push(gr)
+                   groupFromState[id].push(gr);
                }
             }
             return result
@@ -311,12 +312,15 @@ function StatePos(state, pos, from, group_nums){
     this.group_nums = group_nums
 }
 
-function makeMatchObject(lastStatePos){
-    var steps = [],
-        statePos = lastStatePos,
+function MatchObject(lastStatePos, word){
+    this.lastStatePos = lastStatePos
+    this.word = word
+}
+
+MatchObject.prototype.groups = function(){
+    var statePos = this.lastStatePos,
         groups = {}
     while(statePos.pos >= 0){
-        steps.push(statePos)
         var id = statePos.from.state.id
         if(groupFromState[id]){
             for(var gr of groupFromState[id]){
@@ -329,11 +333,16 @@ function makeMatchObject(lastStatePos){
         }
         statePos = statePos.from
     }
-    steps = steps.reverse()
-    return {
-        steps,
-        groups
+    var result = []
+    for(var group in groups){
+        result.push(this.word.substring(groups[group].start, groups[group].end + 1))
     }
+    return result
+}
+
+MatchObject.prototype.toString = function(){
+    return `<re.MatchObject; span=(0, ${this.lastStatePos.pos});` +
+        ` match='${this.word}'>`
 }
 
 /*
@@ -383,7 +392,7 @@ function search(nfa, word) {
     let finalState = currentStates.find(s => s.isEnd)
     if(finalState) {
         var ix = currentStates.indexOf(finalState);
-        return makeMatchObject(currentPaths[ix]);
+        return new MatchObject(currentPaths[ix], word);
     }else{
         return false;
     }

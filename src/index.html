@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+</head>
+<body>
+<script type="module">
+import {createMatcher} from './regex.js'
+
+/*
+var match = createMatcher('(a|b)*c');
+
+var mo = match('aabac')
+console.log('mo', mo)
+console.log(mo + '', mo.groups())
+
+var match = createMatcher('(a(b))*c');
+
+var mo = match('abc')
+console.log('mo', mo)
+console.log(mo + '', mo.groups())
+
+
+var match = createMatcher('(ab)*c');
+
+var mo = match('ababababc')
+console.log('mo', mo)
+console.log(mo + '', mo.groups())
+
+
+*/
+
+var match = createMatcher('(ab+)\\1c');
+
+var mo = match('abbabbc')
+console.log('mo', mo)
+console.log(mo + '', mo.groups())
+
+</script>
+</body>
+</html>

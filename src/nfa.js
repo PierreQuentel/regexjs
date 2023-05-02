@@ -12,17 +12,14 @@
 
 let state_id = {value: 0}
 
-var states = {}
-
 function createState(isEnd) {
-    var state = {
+    return {
         isEnd,
         transition: {},
         epsilonTransitions: [],
-        id: state_id.value++
-    };
-    states[state.id] = state
-    return state
+        id: state_id.value++,
+        groups: groupStack.slice()
+    }
 }
 
 function addEpsilonTransition(from, to) {
@@ -34,6 +31,10 @@ function addEpsilonTransition(from, to) {
 */
 function addTransition(from, to, symbol) {
     from.transition[symbol] = to;
+}
+
+function addBackReference(from, to, groupNum){
+    from.backReference = {groupNum, to}
 }
 
 /*
@@ -54,6 +55,17 @@ function fromSymbol(symbol) {
     const start = createState(false);
     const end = createState(true);
     addTransition(start, end, symbol);
+
+    return { start, end };
+}
+
+/*
+   Construct an NFA that recognizes a back reference.
+*/
+function fromBackReference(groupNum) {
+    const start = createState(false);
+    const end = createState(true);
+    addBackReference(start, end, groupNum);
 
     return { start, end };
 }
@@ -92,6 +104,8 @@ function union(first, second) {
 */
 function closure(nfa) {
     const start = createState(false);
+    // mark closure start to evaluate group value
+    nfa.start.closureStart = true;
     const end = createState(true);
 
     addEpsilonTransition(start, end);
@@ -178,6 +192,7 @@ import { toParseTree } from './parser2.js';
 let groupNum = 0
 
 const groupFromState = {}
+const groupStack = []
 
 function toNFAfromParseTree(root) {
     if (root.label === 'Expr') {
@@ -213,26 +228,25 @@ function toNFAfromParseTree(root) {
 
     if (root.label === 'Atom') {
         if (root.children.length === 3){ // Atom -> '(' Expr ')'
-            var gr = groupNum++,
-                id_start = state_id.value
-            var result = toNFAfromParseTree(root.children[1]);
-            // store groups associated to states
-            for(var id = id_start; id < state_id.value; id++){
-               if(groupFromState[id] === undefined){
-                   groupFromState[id] = [gr];
-               }else{
-                   groupFromState[id].push(gr);
-               }
-            }
-            return result
+            // push new group number on top of groupStack
+            // all the states created in this stage will have it in their
+            // attribute .groups
+            groupStack.push(++groupNum);
+            const result = toNFAfromParseTree(root.children[1]);
+            groupStack.pop();
+            return result;
         }
         return toNFAfromParseTree(root.children[0]); // Atom -> Char
     }
 
     if (root.label === 'Char') {
-        if (root.children.length === 2) // Char -> '\' AnyChar
+        if (root.children.length === 2)  {// Char -> '\' AnyChar
+            const label = root.children[1].label
+            if (label.match(/^\d+$/)) {
+                return fromBackReference(label)
+            }
             return fromSymbol(root.children[1].label);
-
+        }
         return fromSymbol(root.children[0].label); // Char -> AnyCharExceptMeta
     }
 
@@ -305,11 +319,10 @@ function addNextState(state, nextStates, visited) {
     }
 }
 
-function StatePos(state, pos, from, group_nums){
+function Path(state, pos, from){
     this.state = state
     this.pos = pos
     this.from = from
-    this.group_nums = group_nums
 }
 
 function MatchObject(lastStatePos, word){
@@ -319,21 +332,28 @@ function MatchObject(lastStatePos, word){
 
 MatchObject.prototype.groups = function(){
     var statePos = this.lastStatePos,
-        groups = {}
+        groups = {},
+        trans = []
     while(statePos.pos >= 0){
-        var id = statePos.from.state.id
-        if(groupFromState[id]){
-            for(var gr of groupFromState[id]){
-                if(groups[gr] === undefined){
-                    groups[gr] = {start: statePos.pos, end: statePos.pos}
-                }else{
-                    groups[gr].start = statePos.pos
+        if(statePos.from.state === undefined){
+            console.log('no from', statePos)
+        }
+        var origin = statePos.from,
+            isClosureStart = origin.state.closureStart
+        for(var gr of statePos.from.state.groups){
+            if(groups[gr] === undefined){
+                groups[gr] = {start: statePos.pos, end: statePos.pos}
+            }else if(! groups[gr].freeze){
+                groups[gr].start = statePos.pos
+                if(isClosureStart){
+                    // freeze group at the last repetition
+                    groups[gr].freeze = true
                 }
             }
         }
         statePos = statePos.from
     }
-    var result = []
+    var result = [this.word]
     for(var group in groups){
         result.push(this.word.substring(groups[group].start, groups[group].end + 1))
     }
@@ -355,13 +375,13 @@ function search(nfa, word) {
     let currentStates = [];
     let currentPaths = []
     let pos = 0;
-    let firstStepPos = new StatePos(nfa.start, -1);
+    let firstStatePos = new Path(nfa.start, -1);
 
     /* The initial set of current states is either the start state or
        the set of states reachable by epsilon transitions from the start state */
     addNextState(nfa.start, currentStates, []);
     for(var i = 0, len = currentStates.length; i < len; i++){
-        currentPaths.push(new StatePos(currentStates[i], pos, firstStepPos))
+        currentPaths.push(new Path(currentStates[i], pos, firstStatePos))
     }
 
     for (const symbol of word) {
@@ -372,12 +392,43 @@ function search(nfa, word) {
         for (const state of currentStates) {
             rank++
             const statePos = currentPaths[rank]
-            const nextState = state.transition[symbol];
-            if (nextState) {
-                var before = nextStates.length
-                addNextState(nextState, nextStates, []);
-                for(var i = before, len = nextStates.length; i < len; i++){
-                    nextPaths.push(new StatePos(nextStates[i], pos, statePos))
+            if (state.backref) {
+                if (pos < state.end) {
+                    nextStates.push(state);
+                    nextPaths.push(statePos);
+                }else{
+                    const nextState = state.next
+                    addNextState(nextState, nextStates, []);
+                    for(var i = before, len = nextStates.length; i < len; i++){
+                        nextPaths.push(new Path(nextStates[i], pos, statePos))
+                    }
+                }
+            }else{
+                const nextState = state.transition[symbol];
+                if (nextState) {
+                    var before = nextStates.length
+                    addNextState(nextState, nextStates, []);
+                    for(var i = before, len = nextStates.length; i < len; i++){
+                        nextPaths.push(new Path(nextStates[i], pos, statePos))
+                    }
+                } else if(state.backReference) {
+                    var groupNum = state.backReference.groupNum
+                    var path = currentPaths[currentStates.indexOf(state)],
+                        mo = new MatchObject(path, word),
+                        groups = mo.groups()
+                    if (groups[groupNum] !== undefined) {
+                        if(groups[groupNum] == word.substr(pos, groups[groupNum].length)){
+                            var backRefState = {
+                                backref: groupNum,
+                                start: pos,
+                                end: pos + groups[groupNum].length - 1,
+                                next: state.backReference.to,
+                                groups: state.groups
+                            }
+                            nextStates.push(backRefState)
+                            nextPaths.push(new Path(backRefState, pos, statePos))
+                        }
+                    }
                 }
             }
         }

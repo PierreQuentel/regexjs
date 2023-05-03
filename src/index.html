@@ -5,7 +5,7 @@
 </head>
 <body>
 <script type="module">
-import {createMatcher} from './regex.js'
+import {re} from './nfa.js'
 
 /*
 var match = createMatcher('(a|b)*c');
@@ -30,11 +30,72 @@ console.log(mo + '', mo.groups())
 
 */
 
-var match = createMatcher('(ab+)\\1c');
-
-var mo = match('abbabbc')
+/*
+var mo = re.match('(ab+)\\1c', 'abbbabbbc')
 console.log('mo', mo)
 console.log(mo + '', mo.groups())
+*/
+
+const None = false
+
+function assert_is(x, y){
+  if(x !== y){
+    throw Error(`${x} is not ${y}`)
+  }
+}
+
+function assert_is_not(x, y){
+  if(x === y){
+    throw Error(`${x} is ${y}`)
+  }
+}
+
+function assert_equal(x, y){
+  if(Array.isArray(x)){
+    if((! Array.isArray(y)) || x.length != y.length){
+      throw Error(`${x} != ${y}`)
+    }else{
+      for(var i = 0, len = x.length; i < len; i++){
+        assert_equal(x[i], y[i])
+      }
+    }
+  }
+  if(x != y){
+    throw Error(`${x} != ${y}`)
+  }
+}
+
+/*
+var m = re.search('world', 'hello world')
+console.log(m + '', m.string, m.groups())
+
+var m = re.match('world', 'hello world')
+assert_is(m, None)
+
+var m = re.match('hello', 'hello world')
+assert_is_not(m, None)
+assert_equal(m.string, 'hello world')
+assert_equal(m.groups().length, 0)
+
+var m = re.match("(\\d+)\.(\\d+)", "24.1632")
+console.log(m.groups(), ['24', '1632'])
+
+*/
+var p = "(a*)b?(a*)?",
+    m = re.match(p, "aa")
+console.log(p, m + '', m.groups())
+
+/*
+var p = "(a+)b?(a+)?",
+    m = re.match(p, "aa")
+console.log(p, m + '', m.groups())
+*/
+// assert_equal(m.groups(), ['24', None])
+// assert m.groups('0') == ('22', '0')
+
+//var m = re.match("(\\d+)\.?(\\d+)? (--)", "24 --")
+//assert_equal(m.groups(), ['24', None, '--'])
+// assert m.groups('0') == ('24', '0', '--')
 
 </script>
 </body>

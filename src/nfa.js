@@ -10,6 +10,9 @@
   but not both.
 */
 
+import { isDigit } from './tester.js'
+import { show } from './visualize.js'
+
 let state_id = {value: 0}
 
 function createState(isEnd) {
@@ -142,6 +145,7 @@ function zeroOrOne(nfa) {
 function oneOrMore(nfa) {
     const start = createState(false);
     const end = createState(true);
+    nfa.start.closureStart = true;
 
     addEpsilonTransition(start, nfa.start);
     addEpsilonTransition(nfa.end, end);
@@ -244,6 +248,8 @@ function toNFAfromParseTree(root) {
             const label = root.children[1].label
             if (label.match(/^\d+$/)) {
                 return fromBackReference(label)
+            } else if (label == 'd') {
+                return fromSymbol('\\' + label)
             }
             return fromSymbol(root.children[1].label);
         }
@@ -325,44 +331,45 @@ function Path(state, pos, from){
     this.from = from
 }
 
-function MatchObject(lastStatePos, word){
-    this.lastStatePos = lastStatePos
-    this.word = word
+function MatchObject(lastPath, string, pos){
+    this.lastPath = lastPath
+    this.string = string
+    this.pos = pos
 }
 
 MatchObject.prototype.groups = function(){
-    var statePos = this.lastStatePos,
+    var path = this.lastPath,
         groups = {},
         trans = []
-    while(statePos.pos >= 0){
-        if(statePos.from.state === undefined){
-            console.log('no from', statePos)
+    while(path.pos >= 0){
+        if(path.from.state === undefined){
+            console.log('no from', path)
         }
-        var origin = statePos.from,
+        var origin = path.from,
             isClosureStart = origin.state.closureStart
-        for(var gr of statePos.from.state.groups){
+        for(var gr of path.from.state.groups){
             if(groups[gr] === undefined){
-                groups[gr] = {start: statePos.pos, end: statePos.pos}
+                groups[gr] = {start: path.pos, end: path.pos}
             }else if(! groups[gr].freeze){
-                groups[gr].start = statePos.pos
+                groups[gr].start = path.pos
                 if(isClosureStart){
                     // freeze group at the last repetition
                     groups[gr].freeze = true
                 }
             }
         }
-        statePos = statePos.from
+        path = path.from
     }
-    var result = [this.word]
+    var result = []
     for(var group in groups){
-        result.push(this.word.substring(groups[group].start, groups[group].end + 1))
+        result.push(this.string.substring(groups[group].start, groups[group].end + 1))
     }
     return result
 }
 
 MatchObject.prototype.toString = function(){
-    return `<re.MatchObject; span=(0, ${this.lastStatePos.pos});` +
-        ` match='${this.word}'>`
+    return `<re.MatchObject; span=(${this.pos}, ${this.lastPath.pos});` +
+        ` match='${this.string.substring(this.pos, this.lastPath.pos + 1)}'>`
 }
 
 /*
@@ -371,10 +378,16 @@ MatchObject.prototype.toString = function(){
 
   For an NFA with N states in can be at at most N states at a time. This algorighm finds a match by processing the input word once.
 */
-function search(nfa, word) {
+function search(nfa, word, start, endpos) {
+    show(nfa);
     let currentStates = [];
     let currentPaths = []
-    let pos = 0;
+    if(start === undefined){
+        start = 0;
+    }
+    if(endpos === undefined){
+        endpos = word.length
+    }
     let firstStatePos = new Path(nfa.start, -1);
 
     /* The initial set of current states is either the start state or
@@ -384,12 +397,14 @@ function search(nfa, word) {
         currentPaths.push(new Path(currentStates[i], pos, firstStatePos))
     }
 
-    for (const symbol of word) {
+    for (var pos = start; pos < endpos; pos++) {
+        const symbol = word[pos]
         const nextStates = [];
         const nextPaths = [];
         let rank = -1;
 
         for (const state of currentStates) {
+            console.log('symbol', symbol, 'state', state)
             rank++
             const statePos = currentPaths[rank]
             if (state.backref) {
@@ -404,14 +419,20 @@ function search(nfa, word) {
                     }
                 }
             }else{
-                const nextState = state.transition[symbol];
+                var nextState = state.transition[symbol];
+                if (! nextState ) {
+                    if (state.transition['\\d'] && isDigit(symbol) ){
+                        nextState = state.transition['\\d']
+                        console.log(symbol, 'isDigit')
+                    }
+                }
                 if (nextState) {
                     var before = nextStates.length
                     addNextState(nextState, nextStates, []);
                     for(var i = before, len = nextStates.length; i < len; i++){
                         nextPaths.push(new Path(nextStates[i], pos, statePos))
                     }
-                } else if(state.backReference) {
+                } else if (state.backReference) {
                     var groupNum = state.backReference.groupNum
                     var path = currentPaths[currentStates.indexOf(state)],
                         mo = new MatchObject(path, word),
@@ -430,20 +451,20 @@ function search(nfa, word) {
                         }
                     }
                 }
+
             }
         }
         if(nextStates.length == 0){
-            return false
+            break
         }
         currentStates = nextStates;
         currentPaths = nextPaths;
-        pos++
     }
 
     let finalState = currentStates.find(s => s.isEnd)
-    if(finalState) {
+    if( finalState ) {
         var ix = currentStates.indexOf(finalState);
-        return new MatchObject(currentPaths[ix], word);
+        return new MatchObject(currentPaths[ix], word, start);
     }else{
         return false;
     }
@@ -454,8 +475,29 @@ function recognize(nfa, word) {
     return search(nfa, word);
 }
 
+import { createMatcher } from './regex.js';
+
+const re = {
+    match: function(pattern, word){
+        const nfa = toNFAFromInfixExp(pattern);
+        return search(nfa, word)
+    },
+    search: function(pattern, word){
+        const nfa = toNFAFromInfixExp(pattern);
+        for(var pos = 0, len = word.length; pos < len; pos++){
+            var mo = search(nfa, word, pos)
+            if(mo){
+                console.log('search ok at pos', pos)
+                return mo
+            }
+        }
+        return false
+    }
+}
+
 export {
     toNFA,
     toNFAFromInfixExp,
-    recognize
+    recognize,
+    re
 };

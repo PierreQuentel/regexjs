@@ -81,7 +81,7 @@ var m = re.match("(\\d+)\.(\\d+)", "24.1632")
 console.log(m.groups(), ['24', '1632'])
 
 */
-var p = "(a*)b?(a*)?",
+var p = "(a+)b?(a+)?",
     m = re.match(p, "aa")
 console.log(p, m + '', m.groups())
 

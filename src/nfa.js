@@ -392,7 +392,10 @@ function search(nfa, word, start, endpos) {
 
     /* The initial set of current states is either the start state or
        the set of states reachable by epsilon transitions from the start state */
-    addNextState(nfa.start, currentStates, []);
+    var visited = []
+    addNextState(nfa.start, currentStates, visited);
+    console.log('initial', nfa.start.id)
+    console.log('states', currentStates.map(x => x.id), 'visited', visited.map(x => x.id))
     for(var i = 0, len = currentStates.length; i < len; i++){
         currentPaths.push(new Path(currentStates[i], pos, firstStatePos))
     }
@@ -404,7 +407,7 @@ function search(nfa, word, start, endpos) {
         let rank = -1;
 
         for (const state of currentStates) {
-            console.log('symbol', symbol, 'state', state)
+            console.log('symbol', symbol, 'at pos', pos, 'state', state.id)
             rank++
             const statePos = currentPaths[rank]
             if (state.backref) {
@@ -412,8 +415,10 @@ function search(nfa, word, start, endpos) {
                     nextStates.push(state);
                     nextPaths.push(statePos);
                 }else{
-                    const nextState = state.next
-                    addNextState(nextState, nextStates, []);
+                    const nextState = state.next,
+                          visited = []
+                    addNextState(nextState, nextStates, visited);
+                    console.log('visited', visited)
                     for(var i = before, len = nextStates.length; i < len; i++){
                         nextPaths.push(new Path(nextStates[i], pos, statePos))
                     }
@@ -427,8 +432,10 @@ function search(nfa, word, start, endpos) {
                     }
                 }
                 if (nextState) {
-                    var before = nextStates.length
-                    addNextState(nextState, nextStates, []);
+                    var before = nextStates.length,
+                        visited = []
+                    addNextState(nextState, nextStates, visited);
+                    console.log('nextState', nextState.id, 'visited', visited.map(x => x.id))
                     for(var i = before, len = nextStates.length; i < len; i++){
                         nextPaths.push(new Path(nextStates[i], pos, statePos))
                     }
@@ -451,7 +458,6 @@ function search(nfa, word, start, endpos) {
                         }
                     }
                 }
-
             }
         }
         if(nextStates.length == 0){
@@ -459,12 +465,17 @@ function search(nfa, word, start, endpos) {
         }
         currentStates = nextStates;
         currentPaths = nextPaths;
+        console.log('after symbol', symbol, 'at', pos, 'states', currentStates.map(x => x.id))
     }
 
-    let finalState = currentStates.find(s => s.isEnd)
-    if( finalState ) {
-        var ix = currentStates.indexOf(finalState);
-        return new MatchObject(currentPaths[ix], word, start);
+    let finalStates = currentStates.filter(s => s.isEnd)
+    if( finalStates.length > 0 ) {
+        for(var finalState of finalStates){
+            var ix = currentStates.indexOf(finalState);
+            var mo = new MatchObject(currentPaths[ix], word, start);
+            console.log('mo', mo, 'groups', mo.groups())
+        }
+        return mo
     }else{
         return false;
     }

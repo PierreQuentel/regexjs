@@ -45,13 +45,12 @@ function draw_states(states){
 }
 
 function draw_line(states, from_id, to, delta){
-    console.log('draw line', states, from_id, to, 'delta', delta)
     var y = h,
         sign = delta > 0 ? 1 : -1
     if(Math.abs(delta) == 1){
-        var cx = mx + from_id * spaceBetweenCircles + r,
-            dest_x = mx + to[1] * spaceBetweenCircles - r,
-            y = h + sign * r / 2,
+        var cx = mx + from_id * spaceBetweenCircles + sign * r,
+            dest_x = mx + to[1] * spaceBetweenCircles - sign * r,
+            y = h - sign * r / 2,
             d = `M${cx},${y} L${dest_x},${y}`
     }else{
         var cx = mx + from_id * spaceBetweenCircles + r * sign / 2,
@@ -60,19 +59,32 @@ function draw_line(states, from_id, to, delta){
             y = start_y - dy * delta,
             d = `M${cx},${start_y} L${cx},${y} L${dest_x},${y} L${dest_x},${start_y}`
     }
+
+    var stroke = sign > 0 ? 'blue' : 'red'
     var path = document.createElementNS(svgNS, 'path');
     path.setAttributeNS(null, 'd', d);
-    path.setAttributeNS(null, 'style', 'fill: none; stroke: blue; stroke-width: 1px;' );
+    path.setAttributeNS(null, 'style',
+        `fill: none; stroke: ${stroke}; stroke-width: 1px;` );
+    svg.appendChild(path);
+
+    var path = document.createElementNS(svgNS, 'path');
+    var middle = (cx + dest_x) / 2
+    d = `M${middle - sign * 5},${y - 5} L${middle},${y} L${middle - sign * 5},${y + 5}`
+    path.setAttributeNS(null, 'd', d);
+    path.setAttributeNS(null, 'style',
+        `fill: none; stroke: ${stroke}; stroke-width: 2px;` );
     svg.appendChild(path);
 
     var middle = (cx + dest_x) / 2
     var text = document.createElementNS(svgNS, 'text');
-    var label = sign > 0 ? to[0] + '>' : '<' + to[0]
+    var label = to[0]
     text.appendChild(document.createTextNode(label)) // symbol
     text.setAttributeNS(null, 'x', middle);
-    text.setAttributeNS(null, 'y', y);
-    text.setAttributeNS(null, 'style', 'fill: none; stroke: blue; stroke-width: 1px;' );
+    text.setAttributeNS(null, 'y', y + (sign == 1 ? -5 : 12));
+    text.setAttributeNS(null, 'style', 
+        `fill: none; stroke: ${stroke}; stroke-width: 1px;` );
     svg.appendChild(text);
+
 }
 
 function show(nfa) {
@@ -82,15 +94,6 @@ function show(nfa) {
         lines_to = {},
         nb_states = nfa.end.id
     collect_states(nfa.start, states, lines_to)
-
-    for(var state_id in states){
-        var to = states[state_id].map(x => x[1]),
-            from = lines_to[state_id]
-        if(from){
-            from = from.map(x => x[1])
-        }
-        console.log('state', state_id, 'to', to, 'from', from)
-    }
 
     draw_states(states)
 
